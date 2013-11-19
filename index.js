@@ -85,10 +85,16 @@ CouchConfig.prototype.getServicesList = function(callback){
   var listpath = this.options.view.split('/');
   listpath.splice(1,0,this.options.extraConf.list);
   listpath = listpath.join('/');
-  this.db.list(listpath,{
-    'include_docs':true,
-    'keys':this.options.extraConf.keys
-  },callback);
+
+  var listParams = {
+    'include_docs':true    
+  }
+
+  if(this.options.extraConf.keys){
+    listParams.keys = this.options.extraConf.keys;
+  }
+
+  this.db.list(listpath,listParams,callback);
 }
 
 CouchConfig.prototype.getServicesView = function(callback) {
