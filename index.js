@@ -27,8 +27,10 @@ util.inherits(CouchConfig, EventEmitter);
 CouchConfig.prototype.init = function(callback) {
   var options = this.options;
 
+  var extraConf = options.extraConf || {};
+
   // Create cradle connection
-  var db = this.db = new(cradle.Connection)(options.host, options.port, options.extraConf).database(options.databaseName);
+  var db = this.db = new cradle.Connection(options.host, options.port, extraConf).database(options.databaseName);
   var self = this;
 
   // check that database exists
@@ -52,13 +54,13 @@ CouchConfig.prototype.init = function(callback) {
         'include_docs':true,
       }
 
-      if(self.options.extraConf.filter){
-        feedOptions.filter = self.options.extraConf.filter;
+      if(self.options.filter){
+        feedOptions.filter = self.options.filter;
       }
 
-      if(self.options.extraConf.keys) {
+      if(self.options.keys) {
         feedOptions.query_params = {
-          'keys':JSON.stringify(self.options.extraConf.keys)
+          'keys':JSON.stringify(self.options.keys)
         }
       }
 
@@ -83,15 +85,15 @@ CouchConfig.prototype.init = function(callback) {
 CouchConfig.prototype.getServicesList = function(callback){
 
   var listpath = this.options.view.split('/');
-  listpath.splice(1,0,this.options.extraConf.list);
+  listpath.splice(1,0,this.options.list);
   listpath = listpath.join('/');
 
   var listParams = {
     'include_docs':true    
   }
 
-  if(this.options.extraConf.keys){
-    listParams.keys = this.options.extraConf.keys;
+  if(this.options.keys){
+    listParams.keys = this.options.keys;
   }
 
   this.db.list(listpath,listParams,callback);
@@ -99,8 +101,16 @@ CouchConfig.prototype.getServicesList = function(callback){
 
 CouchConfig.prototype.getServicesView = function(callback) {
 
+  var viewParams = {
+    'include_docs':true
+  };
+
+  if(this.options.keys){
+    viewParams.keys = this.options.keys
+  }
+
   // get all site configs for this app
-  this.db.view(this.options.view, { include_docs: true }, function(err, rows) {
+  this.db.view(this.options.view, viewParams, function(err, rows) {
     if (!err) {
       var sites = _.map(rows, function(row) {
         row.doc.id = row.doc._id;
@@ -117,7 +127,7 @@ CouchConfig.prototype.getServices = function(callback){
     throw new Error('Couch configuration not initialized.');
   }
 
-  if(this.options.extraConf.list){
+  if(this.options.list){
     this.getServicesList(callback);
   }
   else{
