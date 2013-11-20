@@ -27,9 +27,11 @@ util.inherits(CouchConfig, EventEmitter);
 CouchConfig.prototype.init = function(callback) {
   var options = this.options;
 
+  var extraConf = options.extraConf || {};
+
   // Create cradle connection
-  var db = this.db = new(cradle.Connection)(options.host, options.port, options.extraConf).database(options.databaseName);
-  var that = this;
+  var db = this.db = new cradle.Connection(options.host, options.port, extraConf).database(options.databaseName);
+  var self = this;
 
   // check that database exists
   db.exists(function (err, exists) {
@@ -42,42 +44,73 @@ CouchConfig.prototype.init = function(callback) {
       _.isFunction(callback) ? callback(err) : null;
     }
     else {
-      that.getServices(function(err, sites) {
-
-        that.emit('update', sites);
-
-        _.isFunction(callback) ? callback(err, sites) : null;
-      });
+      _.isFunction(callback) ? callback(err, self) : null;
     }
 
     // setup follow and event emitters.
     if (!err && exists) {
+      var feedOptions = {
+        'since':'now',
+        'include_docs':true,
+      }
+
+      if(self.options.filter){
+        feedOptions.filter = self.options.filter;
+      }
+
+      if(self.options.keys) {
+        feedOptions.query_params = {
+          'keys':JSON.stringify(self.options.keys)
+        }
+      }
+
       var feed = db.changes({ since: 'now', include_docs: true });
 
       // emitthe changed site.
       feed.on('change', function(change) {
         var site = change.doc;
         site.id = site._id;
-        that.emit('update', [site]);
+        self.emit('update', [site]);
       });
 
       feed.on('error', function(err) {
         // this is a serious error.  We may need a timeout before retrying.
         // For now, we just stop listening to changes.
-        that.emit('error', err);
+        self.emit('error', err);
       });
     }
-
   });
 };
 
-CouchConfig.prototype.getServices = function(callback) {
-  if (!this.db) {
-    throw new Error('Couch configuration not initialized.');
+CouchConfig.prototype.getServicesList = function(callback){
+
+  var listpath = this.options.view.split('/');
+  listpath.splice(1,0,this.options.list);
+  listpath = listpath.join('/');
+
+  var listParams = {
+    'include_docs':true    
+  }
+
+  if(this.options.keys){
+    listParams.keys = this.options.keys;
+  }
+
+  this.db.list(listpath,listParams,callback);
+}
+
+CouchConfig.prototype.getServicesView = function(callback) {
+
+  var viewParams = {
+    'include_docs':true
+  };
+
+  if(this.options.keys){
+    viewParams.keys = this.options.keys
   }
 
   // get all site configs for this app
-  this.db.view(this.options.view, { include_docs: true }, function(err, rows) {
+  this.db.view(this.options.view, viewParams, function(err, rows) {
     if (!err) {
       var sites = _.map(rows, function(row) {
         row.doc.id = row.doc._id;
@@ -89,14 +122,31 @@ CouchConfig.prototype.getServices = function(callback) {
   });
 };
 
-var CouchPlugin = function() {};
+CouchConfig.prototype.getServices = function(callback){
+  if(!this.db) {
+    throw new Error('Couch configuration not initialized.');
+  }
 
-CouchPlugin.prototype.attach = function(options) {
-  this.externalConfig = new CouchConfig(options);
-};
+  if(this.options.list){
+    this.getServicesList(callback);
+  }
+  else{
+    this.getServicesView(callback);
+  }
+}
 
-CouchPlugin.prototype.init = function(done) {
-  this.externalConfig.init(done);
+var CouchPlugin = function(namespace) {
+  namespace = namespace || 'externalConfig';
+  return {
+    
+    'attach':function(options) {
+      this[namespace] = new CouchConfig(options);
+    },
+
+    'init':function(done) {
+      this[namespace].init(done);
+    }
+  }
 };
 
 module.exports = CouchPlugin;
